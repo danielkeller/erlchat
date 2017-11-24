@@ -1,0 +1,13 @@
+{"0.2",
+    [{"0.1", [
+        {apply,{application,stop,[chat]}},
+        {load_module, chat_data},
+        {apply,{chat_data,migrate,[v01tov02]}},
+        {apply,{application,start,[chat,permanent]}}
+    ]}],
+    [{"0.1", [
+        {apply,{application,stop,[chat]}},
+        {load_module, chat_data},
+        {apply,{chat_data,reverse,[v02tov01]}},
+        {apply,{application,start,[chat,permanent]}}
+    ]}]}.

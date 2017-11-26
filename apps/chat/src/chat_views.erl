@@ -9,7 +9,7 @@
 -module(chat_views).
 
 %% API
--export([chat_page/1, messages/3, send_message/2]).
+-export([chat_page/1, messages/3, send_message/2, old_messages/3]).
 
 string_sanitize(Bytes) ->
     Unquotes = re:replace(Bytes, <<"\"">>, <<"\\\\\"">>, [global]),
@@ -23,6 +23,17 @@ message_to_json({Id, Uid, Msg}) -> [
     <<",\"m\":\"">>,
     string_sanitize(Msg),
     <<"\"}">>].
+
+messages_to_json_arr([Msg | Msgs]) ->
+    Comma = fun (M) -> [<<",">>, message_to_json(M)] end,
+    [
+        <<"[">>,
+        message_to_json(Msg),
+        lists:map(Comma, Msgs),
+        <<"]">>
+    ];
+messages_to_json_arr([]) ->
+    <<"[]">>.
 
 next_message(Chat, Since) ->
     Msgs = chat_chat:new_messages(Chat, Since),
@@ -41,10 +52,17 @@ chat_page(_) ->
 messages(Since, Name, _) ->
     Chat = chat_chat_sup:get_or_create_chat(Name),
     Next = fun() -> next_message(Chat, Since) end,
-    {200, [{<<"Content-Type">>, <<"text/html">>}], Next}.
+    {200, [{<<"Content-Type">>, <<"application/json">>}], Next}.
 
 send_message(Name, Request) ->
     Chat = chat_chat_sup:get_or_create_chat(Name),
     Uid = get_uid(Request),
     chat_chat:send_message(Chat, Uid, chat_http:body(Request)),
     {200, [], ""}.
+
+-spec(old_messages(integer(), binary(), chat_http:request()) -> chat_http:response()).
+old_messages(Before, Name, _) ->
+    Chat = chat_chat_sup:get_or_create_chat(Name),
+    Msgs = chat_chat:old_messages(Chat, Before),
+    Formatted = messages_to_json_arr(Msgs),
+    {200, [{<<"Content-Type">>, <<"application/json">>}], Formatted}.

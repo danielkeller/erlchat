@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, get/1, new_messages/2, send_message/3]).
+-export([start_link/1, get/1, new_messages/2, old_messages/2, send_message/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -37,8 +37,13 @@ start_link(Key) ->
 get(Key) ->
     gproc:where(?REG(Key)).
 
+-spec(new_messages(pid(), non_neg_integer()) -> nonempty_list(_)).
 new_messages(Pid, Since) ->
     gen_server:call(Pid, {new_messages, Since}, infinity).
+
+-spec(old_messages(pid(), non_neg_integer()) -> list(_)).
+old_messages(Pid, Before) ->
+    gen_server:call(Pid, {old_messages, Before}, infinity).
 
 send_message(Pid, Uid, Msg) ->
     gen_server:cast(Pid, {send_message, Uid, Msg}).
@@ -82,12 +87,19 @@ init([Key]) ->
     {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
     {stop, Reason :: term(), NewState :: #state{}}).
 
-handle_call({new_messages, Since}, From, State = #state{pending = Pending}) ->
-    Existing = chat_data:get_messages(State#state.id, Since),
+handle_call({new_messages, Since}, From,
+        State = #state{pending = Pending, seq = Next}) ->
+    Start = max(Since, Next - 6),
+    Existing = chat_data:get_messages(State#state.id, Start),
     case Existing of
         [] -> {noreply, State#state{pending = [From | Pending]}};
         _ -> {reply, Existing, State}
-    end.
+    end;
+
+handle_call({old_messages, Before}, _From, State) ->
+    Since = Before - 6,
+    Msgs = chat_data:get_messages(State#state.id, Since, Before),
+    {reply, Msgs, State}.
 
 %%--------------------------------------------------------------------
 %% @private

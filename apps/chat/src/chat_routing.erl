@@ -3,6 +3,11 @@
 -export([route/3]).
 
 -spec(route(atom(), binary(), chat_http:request()) -> chat_http:response()).
+route('GET', <<"/chat/", Name:10/bytes, "/old/", BeforeStr/bytes>>, Request) ->
+    {Before, _} = string:to_integer(BeforeStr),
+    View = fun (Req) -> chat_views:old_messages(Before, Name, Req) end,
+    (chat_session:middleware(View))(Request);
+
 route('GET', <<"/chat/", Name:10/bytes, "/", SinceStr/bytes>>, Request) ->
     {Since, _} = string:to_integer(SinceStr),
     View = fun (Req) -> chat_views:messages(Since, Name, Req) end,

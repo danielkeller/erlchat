@@ -2,7 +2,7 @@
 
 %% API
 -export([init/0, migrate/1, reverse/1, session/3,
-    get_chat/1, save_message/4, get_messages/2, get_latest_key/1]).
+    get_chat/1, save_message/4, get_messages/2, get_messages/3, get_latest_key/1]).
 
 -record(chat_session, {
     key :: {binary(), atom()},
@@ -62,15 +62,20 @@ save_message(ChatKey, Key, Uid, Text) ->
     mnesia:activity(transaction,
         fun() -> do_save_message(ChatKey, Key, Uid, Text) end).
 
-do_get_messages(ChatKey, Since) ->
+do_get_messages(ChatKey, Guard) ->
     MatchHead = #chat_message{key={ChatKey, '$1'}, _='_'},
-    Guard = {'>', '$1', Since},
-    Msgs = mnesia:select(chat_message, [{MatchHead, [Guard], ['$_']}]),
+    Msgs = mnesia:select(chat_message, [{MatchHead, Guard, ['$_']}]),
     lists:map(fun output_message/1, Msgs).
 
 get_messages(ChatKey, Since) ->
+    Guard = [{'>', '$1', Since}],
     mnesia:activity(transaction,
-        fun() -> do_get_messages(ChatKey, Since) end).
+        fun() -> do_get_messages(ChatKey, Guard) end).
+
+get_messages(ChatKey, Since, Before) ->
+    Guard = [{'>', '$1', Since}, {'<', '$1', Before}],
+    mnesia:activity(transaction,
+        fun() -> do_get_messages(ChatKey, Guard) end).
 
 do_get_latest_key(ChatKey) ->
     %% Select the first message after

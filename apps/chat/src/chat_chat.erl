@@ -16,7 +16,7 @@
 -define(REG(Key), {n, l, {?MODULE, Key}}).
 -define(SERVER(Key), {via, gproc, ?REG(Key)}).
 
--record(state, {id, pending=[]}).
+-record(state, {id, seq, pending=[]}).
 
 %%%===================================================================
 %%% API
@@ -63,7 +63,8 @@ send_message(Pid, Uid, Msg) ->
     {stop, Reason :: term()} | ignore).
 init([Key]) ->
     Id = chat_data:get_chat(Key),
-    {ok, #state{id=Id}}.
+    Seq = chat_data:get_latest_key(Id) + 1,
+    {ok, #state{id=Id, seq=Seq}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -86,10 +87,7 @@ handle_call({new_messages, Since}, From, State = #state{pending = Pending}) ->
     case Existing of
         [] -> {noreply, State#state{pending = [From | Pending]}};
         _ -> {reply, Existing, State}
-    end;
-
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
+    end.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -104,11 +102,10 @@ handle_call(_Request, _From, State) ->
     {stop, Reason :: term(), NewState :: #state{}}).
 
 handle_cast({send_message, Uid, Msg}, State) ->
-    NewMsg = chat_data:save_message(State#state.id, Uid, Msg),
+    Key = State#state.seq,
+    NewMsg = chat_data:save_message(State#state.id, Key, Uid, Msg),
     [gen_server:reply(From, [NewMsg]) || From <- State#state.pending],
-    {noreply, State#state{pending=[]}};
-handle_cast(_Request, State) ->
-    {noreply, State}.
+    {noreply, State#state{pending=[], seq=Key+1}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -160,19 +157,4 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-next_id([]) -> 1;
-next_id([{Id, _, _}| _]) -> Id + 1.
-
-
-filter([], _) -> [];
-filter([{Id, _, _} |_], Since) when Id =< Since -> [];
-filter([Msg | Msgs], Since) ->
-    [Msg | filter(Msgs, Since)].
-
-filter([], _, _) -> [];
-filter([{Id, _, _} | Msgs], Since, Until) when Id >= Until ->
-    filter(Msgs, Since, Until);
-filter(Msgs, Since, _) ->
-    filter(Msgs, Since).
 

@@ -34,8 +34,8 @@
 -type response_headers() :: [{iolist(), iolist()}].
 -type response_stream() :: fun(() -> 'done' | {'more', iolist(), response_stream()}).
 -type response() :: {integer(), response_headers(), iolist() | response_stream()}.
--type view() :: fun((#request{}) -> response()).
 -opaque request() :: #request{}.
+-type view() :: fun((request()) -> response()).
 
 -spec(header(request(), any()) -> any() | undefined).
 header(#request{headers = H}, K) -> maps:get(K, H, undefined).

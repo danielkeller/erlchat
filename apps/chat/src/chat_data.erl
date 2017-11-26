@@ -2,7 +2,7 @@
 
 %% API
 -export([init/0, migrate/1, reverse/1, session/3,
-    get_chat/1, save_message/3, get_messages/2]).
+    get_chat/1, save_message/4, get_messages/2, get_latest_key/1]).
 
 -record(chat_session, {
     key :: {binary(), atom()},
@@ -28,7 +28,7 @@ session(Session, Key, Default) ->
 
 do_session(Session, Key, Default) ->
     K = {Session, Key},
-    case mnesia:read({chat_session, K}) of
+    case mnesia:read(chat_session, K) of
         [] ->
             mnesia:write(#chat_session{key=K, value=Default}),
             Default;
@@ -37,7 +37,7 @@ do_session(Session, Key, Default) ->
     end.
 
 
-ouput_message({chat_message, {_, K}, U, T}) -> {K, U, T}.
+output_message({chat_message, {_, K}, U, T}) -> {K, U, T}.
 
 get_chat(Id) ->
     mnesia:activity(transaction,
@@ -53,25 +53,44 @@ do_get_chat(Id) ->
             Key
     end.
 
-do_save_message(ChatKey, Uid, Text) ->
-    Key = erlang:system_time(),
+do_save_message(ChatKey, Key, Uid, Text) ->
     Msg = #chat_message{key={ChatKey, Key}, uid=Uid, text=Text},
     mnesia:write(Msg),
-    ouput_message(Msg).
+    output_message(Msg).
 
-save_message(ChatKey, Uid, Text) ->
+save_message(ChatKey, Key, Uid, Text) ->
     mnesia:activity(transaction,
-        fun() -> do_save_message(ChatKey, Uid, Text) end).
+        fun() -> do_save_message(ChatKey, Key, Uid, Text) end).
 
 do_get_messages(ChatKey, Since) ->
     MatchHead = #chat_message{key={ChatKey, '$1'}, _='_'},
     Guard = {'>', '$1', Since},
     Msgs = mnesia:select(chat_message, [{MatchHead, [Guard], ['$_']}]),
-    lists:map(fun ouput_message/1, Msgs).
+    lists:map(fun output_message/1, Msgs).
 
 get_messages(ChatKey, Since) ->
     mnesia:activity(transaction,
         fun() -> do_get_messages(ChatKey, Since) end).
+
+do_get_latest_key(ChatKey) ->
+    %% Select the first message after
+    MatchHead = #chat_message{key={'$1', '_'}, _='_'},
+    Guard = {'>', '$1', ChatKey},
+    Result = mnesia:select(chat_message, [{MatchHead, [Guard], ['$_']}], 1, read),
+    Key = case Result of
+        '$end_of_table' ->
+            mnesia:last(chat_message);
+        {[#chat_message{key=NextKey}], _} ->
+            mnesia:prev(chat_message, NextKey)
+    end,
+    case Key of
+        {ChatKey, MsgKey} -> MsgKey;
+        _ -> 0
+    end.
+
+get_latest_key(ChatKey) ->
+    mnesia:activity(transaction,
+        fun() -> do_get_latest_key(ChatKey) end).
 
 init() ->
     %% Don't check if it succeeded
